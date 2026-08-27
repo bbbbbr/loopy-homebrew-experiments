@@ -18,6 +18,12 @@
 
 #define BM_LATCH_ENABLE 0x100
 
+#define BG_TILEMAP_CHRNUM_MASK 0x07FFu
+#define BG_TILEMAP_FLIPY       0x8000u
+#define BG_TILEMAP_FLIPX       0x4000u
+#define BG_TILEMAP_SUBPAL_MASK 0x3000u
+#define BG_TILEMAP_SCREEN_B    0x0800u
+
 #define BG_TILESIZE_8X8   0
 #define BG_TILESIZE_16X16 1
 #define BG_TILESIZE_32X32 2
@@ -25,6 +31,11 @@
 
 #define BG0_FORMAT_4BPP 0
 #define BG0_FORMAT_8BPP 8
+
+#define BG0_SCROLL_X 0
+#define BG0_SCROLL_Y 1
+#define BG1_SCROLL_X 2
+#define BG1_SCROLL_Y 3
 
 #define BG_LAYOUT_64X64_SPLIT  0
 #define BG_LAYOUT_64X64_SHARED 1
@@ -34,6 +45,23 @@
 #define BG_LAYOUT_32X64_SHARED 5
 #define BG_LAYOUT_32X32_SPLIT  6
 #define BG_LAYOUT_32X32_SHARED 7
+
+#define PAL_0   0
+#define PAL_1   1
+#define PAL_2   2
+#define PAL_3   3
+#define PAL_4   4
+#define PAL_5   5
+#define PAL_6   6
+#define PAL_7   7
+#define PAL_8   8
+#define PAL_9   9
+#define PAL_10  10
+#define PAL_11  11
+#define PAL_12  12
+#define PAL_13  13
+#define PAL_14  14
+#define PAL_15  15
 
 #define OBJ_FORMAT_4BPP 0x0000
 #define OBJ_FORMAT_8BPP 0x4000

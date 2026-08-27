@@ -10,6 +10,7 @@ SRAMSIZE = 8K
 # Allocated stack size, increase if necessary
 STACKSIZE = 2K
 
+EMU=../../Emulators/Loopy-MSE-Fork-binary/LoopyMSE
 # Toolchain programs
 WONDERFUL_TOOLCHAIN ?= /opt/wonderful
 TOOLBIN ?= $(WONDERFUL_TOOLCHAIN)/toolchain/gcc-sh-elf/bin/
@@ -25,13 +26,20 @@ OBJ = $(TOOLBIN)$(PREFIX)objcopy
 MV     = mv
 MKDIR  = mkdir -p
 RMDIR  = rm -rf
-FIXROM = /usr/bin/env python3 ./tools/fixrom.py # Change to "python" if necessary
+FIXROM = /usr/bin/env python3 $(TOOLSDIR)/fixrom.py # Change to "python" if necessary
 
 # File/dir locations
+TOOLSDIR = ./tools
 SRCDIR = ./src
-INCDIR = ./include
+INCDIR = ./inc
 OBJDIR = ./obj
-ROM    = ./rom.bin
+RESDIR = ./res
+RES_SRCDIR    = $(RESDIR)
+GBDK_SRCDIR   = $(SRCDIR)/gbdk
+# Resource source asset:
+RES_ASSET_DIR = $(RESDIR)/src
+# Resulting binary
+ROM    = ./tilemap_test.bin
 
 # Basic compile options
 OPTIMIZE = -Os
@@ -39,11 +47,17 @@ LIBS =
 
 # Below here probably doesn't need to be touched
 
-LDSCRIPT = ./tools/loopy.ld
+LDSCRIPT = $(TOOLSDIR)/loopy.ld
 
-# Source/object lists
+# C Source/object lists
 SRCS_C = $(wildcard $(SRCDIR)/*.c)
 OBJS_C = $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRCS_C))
+RES_SRCS_C = $(wildcard $(RES_SRCDIR)/*.c)
+RES_OBJS_C = $(patsubst $(RES_SRCDIR)/%.c,$(OBJDIR)/%.o,$(RES_SRCS_C))
+GBDK_SRCS_C = $(wildcard $(GBDK_SRCDIR)/*.c)
+GBDK_OBJS_C = $(patsubst $(GBDK_SRCDIR)/%.c,$(OBJDIR)/%.o,$(GBDK_SRCS_C))
+
+# Asm Source/object lists
 SRCS_S = $(wildcard $(SRCDIR)/*.s)
 OBJS_S = $(patsubst $(SRCDIR)/%.s,$(OBJDIR)/%.o,$(SRCS_S))
 
@@ -52,7 +66,7 @@ CFLAGS += -m1 -mrenesas
 CFLAGS += -ffreestanding
 CFLAGS += -falign-functions=4 -ffunction-sections -fdata-sections
 CFLAGS += -fomit-frame-pointer -fno-asynchronous-unwind-tables -fno-unwind-tables
-CFLAGS += -Wstack-usage=$(shell numfmt --from=iec $(STACKSIZE)) -I$(INCDIR)
+CFLAGS += -Wstack-usage=$(shell numfmt --from=iec $(STACKSIZE)) -I$(INCDIR) -I$(RES_SRCDIR)
 
 CXXFLAGS = -std=c++23 -fno-exceptions -fno-non-call-exceptions -fno-rtti -fno-threadsafe-statics
 
@@ -75,7 +89,7 @@ rom: $(ROM)
 	$(OBJ) -O binary $< $@
 	$(FIXROM) $(ROM)
 
-$(ROM:.bin=.elf): $(OBJS_S) $(OBJS_C)
+$(ROM:.bin=.elf): $(OBJS_S) $(OBJS_C) $(RES_OBJS_C) $(GBDK_OBJS_C)
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.s | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -83,11 +97,28 @@ $(OBJDIR)/%.o: $(SRCDIR)/%.c | $(OBJDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp | $(OBJDIR)
 	$(CXX) $(CFLAGS) $(CXXFLAGS) -c $< -o $@
+$(OBJDIR)/%.o: $(RES_SRCDIR)/%.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+$(OBJDIR)/%.o: $(GBDK_SRCDIR)/%.c | $(OBJDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 
 $(OBJDIR):
 	$(MKDIR) $@
 
+run:
+	$(EMU) $(ROM)
+
 clean:
 	$(RMDIR) $(OBJDIR)
 	$(RM) $(ROM)
+
+assets-clean:
+	rm -f $(RESDIR)/*.c $(RESDIR)/*.h $(RESDIR)/*.png
+
+assets:
+	$(TOOLSDIR)/tilepalquant $(RES_ASSET_DIR)/intro_cat.png -o $(RESDIR)/intro_cat_out.png -use_metafile
+	$(TOOLSDIR)/png2asset $(RESDIR)/intro_cat_out.png -o $(RESDIR)/intro_cat_out.c -use_metafile
+	$(TOOLSDIR)/tilepalquant $(RES_ASSET_DIR)/title_screen.png -o $(RESDIR)/title_screen_out.png -use_metafile
+	$(TOOLSDIR)/png2asset $(RESDIR)/title_screen_out.png -o $(RESDIR)/title_screen_out.c -use_metafile
 
