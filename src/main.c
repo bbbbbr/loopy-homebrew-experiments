@@ -6,8 +6,8 @@
 #include "serial.h"
 #include "music_data.h"
 
-#include "rgb888_range_test.h"
-#include "parrots.h"
+#include "parrots_rgb444.h"
+#include "gradients_rgb444.h"
 
 #define TILE_NUM_0  0u
 
@@ -61,130 +61,73 @@ void init_gfx() {
         VDP.BM_WIDTH[c]     = (0u << 8) | 255u;
         VDP.BM_HEIGHT[c]    = 223u;
     }
-
-    // 512x512 Bitmap layer
+    // 256x512 Bitmap layer
     //
-    //   Red(bm0)  | Green(bm1)
-    //   ----------------------
-    //   Blue(bm2) | LSBits(gm3)    
+    //   Red + Green(bm0)
+    //   ----------------
+    //       Blue(bm2)
     VDP.BM_SCROLLX[0] = 0u; // Red
     VDP.BM_SCROLLY[0] = 0u;
-        // VDP.BM_SCREENX[0]   = 32u;
-        // VDP.BM_SCREENY[0]   = 32u;
-
-    VDP.BM_SCROLLX[1] = DEVICE_SCREEN_PX_WIDTH; // Green
-    VDP.BM_SCROLLY[1] = 0u;
-
     VDP.BM_SCROLLX[2] = 0u; // Blue
     VDP.BM_SCROLLY[2] = DEVICE_SCREEN_PX_HEIGHT;
-        // VDP.BM_SCREENX[2]   = 64u;
-        // VDP.BM_SCREENY[2]   = 64u;
-
-    VDP.BM_SCROLLX[3] = DEVICE_SCREEN_PX_WIDTH; // LSBits
-    VDP.BM_SCROLLY[3] = DEVICE_SCREEN_PX_HEIGHT;
-
-    VDP.BM_SUBPAL       = BM_SUBPAL(0,1,2,3);
-    VDP.BM_CTRL         = BM_MODE_4BPP_SHARED;
+    
+    VDP.BM_CTRL         = BM_MODE_8BPP_SHARED; /* 256 x 512, 8bpp */
     VDP.SCREENPRIO      = BLEND_MATH_ADD | SCREEN_A_ENABLE | SCREEN_B_ENABLE | PRIORITY_BM_B | PRIORITY_BG0_A | PRIORITY_OBJ0_A;
-    // (all bm* on A, no blending)
-    // VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_A, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0 | LAYER_ENABLE_BM1 | LAYER_ENABLE_BM2 | LAYER_ENABLE_BM3;
-// BM0 and 2 only, Blend ON
-VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_B, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0 | LAYER_ENABLE_BM2;
-    // (bm01 on A, bm12 on B, blending)
-    // VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_B, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0 | LAYER_ENABLE_BM1 | LAYER_ENABLE_BM2 | LAYER_ENABLE_BM3;
+    VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_B, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0 | LAYER_ENABLE_BM2;
 }
 
-// Test: Draw onto BG1 (and offset loaded palette, tiles and tilemap entries)
-void load_rgb555_image(void) {
+
+// Load RGB555 image and split into 2 planes: Red+Green(bm0), Blue(bm2)
+//
+// 256x512 Bitmap layer
+//
+//   Red + Green(bm0)
+//   ----------------
+//       Blue(bm2)
+//
+#define BM_TILEMAP_W 256u
+#define REDGREEN444_OFFSET   (0u)
+#define BLUE444_OFFSET       (DEVICE_SCREEN_PX_HEIGHT * (BM_TILEMAP_W))
+
+#define PAL_15_BLUE_4BPP  15u
+#define PALBLUE_OFFSET   (15u * COLS_PER_PAL_4BPP)
+
+void load_rgb444_256x224_image(const uint16_t * p_src_img_4bpp) {
 
     // Prepare palettes
     uint16_t * p_pal = &VDP.PALETTE[0];
 
-    // Set up RGB channel palettes for BM0/1/2
-    const uint8_t pal444[COLS_PER_PAL_4BPP] = {0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30};
-    const uint16_t palrgb_lsbits[COLS_PER_PAL_4BPP] = {
-        RGB555(0,0,0), RGB555(1,0,0), RGB555(0,1,0),    // 0:Black, 1:Blue LSBit, 2:Green LSBit
-        RGB555(1,1,0), RGB555(0,0,1), RGB555(1,0,1),    // 3:Blue+Green LSBits, 4:Red LSBit, 5:Red + Blue LSBit
-        RGB555(0,1,1), RGB555(1,1,1), 0,0,0,0,0,0,0,0}; // 6:Red+Green LSBits, 7:Red+Green+Blue LSBits, 8..15: Black
-
-
+    // Blue: allocated to last palette 4 bit range 0-30
     for (unsigned int c = 0; c < COLS_PER_PAL_4BPP; c++) {
-        *p_pal                             = RGB555(pal444[c], 0, 0); // Red
-        *(p_pal +  COLS_PER_PAL_4BPP)      = RGB555(0, pal444[c], 0); // Green
-        *(p_pal + (COLS_PER_PAL_4BPP * 2)) = RGB555(0, 0, pal444[c]); // Blue
-        // *(p_pal + (COLS_PER_PAL_4BPP * 3)) = palrgb_lsbits[c]; // RGBLSBits
-        p_pal++;
+        *(p_pal + c + (COLS_PER_PAL_4BPP * PAL_15_BLUE_4BPP)) = RGB555(0, 0, c << 1);
     }
 
-    // Load RGB555 image and split into 4 planes: R4(bm0), G4(bm1), B4(bm2), LSBits(bm3)
-    // The /2 is due to 4bpp mode packing 2 pixels into each byte
-    #define BM_TILEMAP_W 512u    
-    #define ROWSTRIDE ((BM_TILEMAP_W / 2) - ((DEVICE_SCREEN_PX_WIDTH / 2)))
-
-    // 512x512 Bitmap layer
-    //
-    //   Red(bm0)  | Green(bm1)
-    //   ----------------------
-    //   Blue(bm2) | LSBits(gm3)
-    // The /2 is due to 4bpp mode packing 2 pixels into each byte
-    #define RED444_OFFSET   (0u)                                    
-    #define GREEN444_OFFSET (DEVICE_SCREEN_PX_WIDTH / 2)
-    #define BLUE444_OFFSET  (DEVICE_SCREEN_PX_HEIGHT * (BM_TILEMAP_W / 2))
-    #define LSBITS_OFFSET   (DEVICE_SCREEN_PX_HEIGHT * (BM_TILEMAP_W / 2) + (DEVICE_SCREEN_PX_WIDTH / 2))
-
-    // const uint16_t * p_img = rgb888_range_test;
-    const uint16_t * p_img = parrots;
-          uint8_t  * p_bm  = VDP.BITMAP_VRAM_8BIT;
-
-    for (uint16_t y = 0; y < DEVICE_SCREEN_PX_HEIGHT; y++) {
-        for (uint16_t x = 0; x < DEVICE_SCREEN_PX_WIDTH; x+=2) {
-
-
-/*
-            Test gradients on BM0/1/2 - works
-            p_bm[RED444_OFFSET]  = (((y/16) & 0x1F) << 4) | ((y /16) & 0x1F);
-            p_bm[GREEN444_OFFSET] = ((15-(x/16 & 0x1F)) << 4) | ((15-((x+1)/16)) & 0x1F);
-            p_bm[BLUE444_OFFSET]   = ((x/16 & 0x1F) << 4) | (((x+1)/16) & 0x1F);
-            // p_bm[LSBITS_OFFSET]   = 0;
-*/
-            // Test image, works with ONLY 2 channels at once
-            // due to all colors in given bm being same channel
-            // and blending only between *screens* and not bm*s
-
-            uint16_t left_pixel555  = *p_img++; // Load image pixel and advance to next
-            uint16_t right_pixel555 = *p_img++; // Load image pixel and advance to next
-
-            // Blue
-            uint8_t lsbits   =  (uint8_t) left_pixel555 & 0x01u << 4; // Save Blue LSBit
-                    lsbits   |= (uint8_t)right_pixel555 & 0x01u;
-            left_pixel555  >>= 1;
-            right_pixel555 >>= 1;
-            p_bm[BLUE444_OFFSET]  = ((uint8_t)left_pixel555 & 0x0Fu) << 4 | ((uint8_t)right_pixel555 & 0x0Fu);
-            left_pixel555  >>= 4;
-            right_pixel555 >>= 4;
-
-            // Green
-            lsbits |= ((uint8_t) left_pixel555 & 0x01u) << (1 + 4); // Save Green LSBit
-            lsbits |= ((uint8_t)right_pixel555 & 0x01u) << 1;
-            left_pixel555  >>= 1;
-            right_pixel555 >>= 1;
-            p_bm[GREEN444_OFFSET]  = ((uint8_t)left_pixel555 & 0x0Fu) << 4 | ((uint8_t)right_pixel555 & 0x0Fu);
-            left_pixel555  >>= 4;
-            right_pixel555 >>= 4;
-
-            // Red
-            lsbits |= ((uint8_t) left_pixel555 & 0x01u) << (2 + 4); // Save Red LSBit
-            lsbits |= ((uint8_t)right_pixel555 & 0x01u) << 2;
-            left_pixel555  >>= 1;
-            right_pixel555 >>= 1;
-            p_bm[RED444_OFFSET]  = ((uint8_t)left_pixel555 & 0x0Fu) << 4 | ((uint8_t)right_pixel555 & 0x0Fu);
-
-            // LSBits
-            p_bm[LSBITS_OFFSET]  = lsbits;
-
-            p_bm++; // Next bitmap pixel pair
+    // Red + Green share the first 15 palettes and have ~4 bit range
+    // Red:  ~3.5 bit range 2-30 over the span of 14 palettes, mixed with the green ramp per palette
+    // Green: 4 bit range 0-30 within each palette
+    for (unsigned int red = 0; red < (COLS_PER_PAL_4BPP - 1); red++) {
+        for (unsigned int green = 0; green < COLS_PER_PAL_4BPP; green++) {
+            *(p_pal + green + (COLS_PER_PAL_4BPP * red)) = RGB555((red+1) << 1, green << 1, 0);
         }
-        p_bm += ROWSTRIDE; // Next bitmap row
+    }
+
+    uint8_t  * p_bm  = VDP.BITMAP_VRAM_8BIT;
+    for (uint16_t y = 0; y < DEVICE_SCREEN_PX_HEIGHT; y++) {
+        for (uint16_t x = 0; x < DEVICE_SCREEN_PX_WIDTH; x++) {
+
+            uint16_t pixel444  = *p_src_img_4bpp++; // Load image pixel and advance to next
+
+            // Blue Channel
+            p_bm[BLUE444_OFFSET]  = PALBLUE_OFFSET + (uint8_t)(pixel444 & 0x0Fu);
+
+            // Red + Green Channels
+            uint16_t green = (pixel444 >> 4) & 0x0Fu;
+            uint16_t red   = (pixel444 >> 8) & 0x0Fu;
+                     if (red > 0) red--;  // Remap red 1-15 -> 0-14 to deal with only 14 palette range for it
+            p_bm[REDGREEN444_OFFSET]  = (red << 4) | green;
+
+            p_bm++; // Next bitmap pixel
+        }
     }
 }
 
@@ -204,44 +147,33 @@ int main() {
 	init_gfx();
 
 
-    // Test:
-    load_rgb555_image();
+    // load_rgb444_256x224_image(parrots_rgb444);
+    load_rgb444_256x224_image(gradients_rgb444);
 
-	// Every frame, move the BM0 layer according to gamepad/mouse
+    bool showGradientImage = true;
 	while(1) {
 		bios_vsync();
 
-            // Update button state from gamepad buttons
-            uint32_t buttonsNow = READ_GAMEPAD1;
-            pressedButtons = buttonsNow & ~heldButtons;
-            heldButtons = buttonsNow;
+        // Update button state from gamepad buttons
+        uint32_t buttonsNow = READ_GAMEPAD1;
+        pressedButtons = buttonsNow & ~heldButtons;
+        heldButtons = buttonsNow;
 
-            // Set the motion from D-pad directions
-            if (heldButtons & GAMEPAD_BTN_LEFT) {
-                VDP.BM_SCROLLX[1]--;
-            } else if (heldButtons & GAMEPAD_BTN_RIGHT) {
-                VDP.BM_SCROLLX[1]++;
-            }
+        if (pressedButtons & GAMEPAD_BTN_START) {
+            showGradientImage = !showGradientImage;
+            if (showGradientImage) load_rgb444_256x224_image(gradients_rgb444);
+            else                   load_rgb444_256x224_image(parrots_rgb444);
+        }
 
-            if(heldButtons & GAMEPAD_BTN_UP) {
-                VDP.BM_SCROLLY[1]--;
-            } else if(heldButtons & GAMEPAD_BTN_DOWN) {
-                VDP.BM_SCROLLY[1]++;
-            }        
+        if (pressedButtons & GAMEPAD_BTN_A) {
+            VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_B, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0;
+        } else if (pressedButtons & GAMEPAD_BTN_B) {
+            VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_B, LAYER_SCREEN_A, LAYER_SCREEN_A) |  LAYER_ENABLE_BM2;
+        } else if (pressedButtons & GAMEPAD_BTN_C) {
+            VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_B, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0 | LAYER_ENABLE_BM2;
+        }        
 
-            // Set the motion from D-pad directions
-            if (heldButtons & GAMEPAD_BTN_RTRIG) {
-                VDP.BM_SCROLLX[2]--;
-            } else if (heldButtons & GAMEPAD_BTN_LTRIG) {
-                VDP.BM_SCROLLX[2]++;
-            }
-
-            if(heldButtons & GAMEPAD_BTN_B) {
-                VDP.BM_SCROLLY[2]--;
-            } else if(heldButtons & GAMEPAD_BTN_A) {
-                VDP.BM_SCROLLY[2]++;
-            }        
-	}
+    }
 
 	return 0;
 }

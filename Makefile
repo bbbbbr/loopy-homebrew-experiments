@@ -39,7 +39,7 @@ GBDK_SRCDIR   = $(SRCDIR)/gbdk
 # Resource source asset:
 RES_ASSET_DIR = $(RESDIR)/src
 # Resulting binary
-ROM    = ./tilemap_test.bin
+ROM    = ./rgb444_blend.bin
 
 # Basic compile options
 OPTIMIZE = -Os
@@ -116,7 +116,8 @@ clean:
 assets-clean:
 	rm -f $(RESDIR)/*.c $(RESDIR)/*.h $(RESDIR)/*.png
 
+# Gradient color bar image from: http://www.jentronics.com/color.html
 assets:
-	$(TOOLSDIR)/png2reducedrgb $(RES_ASSET_DIR)/rgb888_range_test.png -o $(RESDIR)/rgb888_range_test.c -use_metafile
-	$(TOOLSDIR)/png2reducedrgb $(RES_ASSET_DIR)/parrots.png           -v -o $(RESDIR)/parrots.c -use_metafile
+	$(TOOLSDIR)/png2reducedrgb $(RES_ASSET_DIR)/rgb888_range_test.png -o $(RESDIR)/gradients_rgb444.c -use_metafile
+	$(TOOLSDIR)/png2reducedrgb $(RES_ASSET_DIR)/parrots.png           -v -o $(RESDIR)/parrots_rgb444.c -use_metafile
 
