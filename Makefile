@@ -117,8 +117,6 @@ assets-clean:
 	rm -f $(RESDIR)/*.c $(RESDIR)/*.h $(RESDIR)/*.png
 
 assets:
-	$(TOOLSDIR)/tilepalquant $(RES_ASSET_DIR)/intro_cat.png -o $(RESDIR)/intro_cat_out.png -use_metafile
-	$(TOOLSDIR)/png2asset $(RESDIR)/intro_cat_out.png -o $(RESDIR)/intro_cat_out.c -use_metafile
-	$(TOOLSDIR)/tilepalquant $(RES_ASSET_DIR)/title_screen.png -o $(RESDIR)/title_screen_out.png -use_metafile
-	$(TOOLSDIR)/png2asset $(RESDIR)/title_screen_out.png -o $(RESDIR)/title_screen_out.c -use_metafile
+	$(TOOLSDIR)/png2reducedrgb $(RES_ASSET_DIR)/rgb888_range_test.png -o $(RESDIR)/rgb888_range_test.c -use_metafile
+	$(TOOLSDIR)/png2reducedrgb $(RES_ASSET_DIR)/parrots.png           -v -o $(RESDIR)/parrots.c -use_metafile
 

@@ -1,13 +1,13 @@
 #include "loopy.h"
 #include "loopy_helpers.h"
 
+#include "gbdk/platform.h"
+
 #include "serial.h"
 #include "music_data.h"
 
-#include "gbdk/platform.h"
-
-#include "intro_cat_out.h"
-#include "title_screen_out.h"
+#include "rgb888_range_test.h"
+#include "parrots.h"
 
 #define TILE_NUM_0  0u
 
@@ -53,58 +53,139 @@ void init_gfx() {
 	VDP.BACKDROP_B      = RGB888(0,0,0);
 
     // Blend style
-	// VDP.BLEND           = BLEND_B_OVER_A;  // Only color 0 tiles show through
-    // VDP.BLEND           = BLEND_MATH;
-    VDP.BLEND           = BLEND_MATH_HALF;
+    VDP.BLEND           = BLEND_MATH;
 
-    VDP.BG_SCROLL[BG0_SCROLL_X] = 0;
-    VDP.BG_SCROLL[BG0_SCROLL_Y] = 0;
-    VDP.BG_CTRL         = BG_TILESIZE(BG_TILESIZE_8X8, BG_TILESIZE_8X8) | BG0_FORMAT_4BPP | BG_LAYOUT_64X64_SPLIT;
-    VDP.BG_SUBPAL[0]    = BG_PAL_SETUP(PAL_0, PAL_1, PAL_2, PAL_3);  // BG0
-    VDP.BG_SUBPAL[1]    = BG_PAL_SETUP(PAL_4, PAL_5, PAL_6, PAL_7);  // BG1
+    for (int c = 0; c < 4; c++) {
+        VDP.BM_SCREENX[c]   = 0u;
+        VDP.BM_SCREENY[c]   = 0u;
+        VDP.BM_WIDTH[c]     = (0u << 8) | 255u;
+        VDP.BM_HEIGHT[c]    = 223u;
+    }
 
-	// VDP.SCREENPRIO      = BLEND_MATH_ADD | SCREEN_A_ENABLE | PRIORITY_BM_A | PRIORITY_BG0_A | PRIORITY_OBJ0_A;
-    // VDP.SCREENPRIO      = BLEND_MATH_SUB | SCREEN_A_ENABLE | SCREEN_B_ENABLE | PRIORITY_BM_A | PRIORITY_BG0_A | PRIORITY_OBJ0_A;
-    VDP.SCREENPRIO      = BLEND_MATH_ADD | SCREEN_A_ENABLE | SCREEN_B_ENABLE | PRIORITY_BM_A | PRIORITY_BG0_A | PRIORITY_OBJ0_A;
-	VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_A, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BG0 | LAYER_ENABLE_BG1;
+    // 512x512 Bitmap layer
+    //
+    //   Red(bm0)  | Green(bm1)
+    //   ----------------------
+    //   Blue(bm2) | LSBits(gm3)    
+    VDP.BM_SCROLLX[0] = 0u; // Red
+    VDP.BM_SCROLLY[0] = 0u;
+        // VDP.BM_SCREENX[0]   = 32u;
+        // VDP.BM_SCREENY[0]   = 32u;
 
-    #define  RESERVE_8BPP_TILE_ROWS   0u  // Number of tile pattern rows to reserve for 8bpp tiles (8 per row)
-    // AKA CHAR_SPLIT, Tile Base, VDP.TILEBASE
-    VDP.CHARBASE           = RESERVE_8BPP_TILE_ROWS;
+    VDP.BM_SCROLLX[1] = DEVICE_SCREEN_PX_WIDTH; // Green
+    VDP.BM_SCROLLY[1] = 0u;
 
-    // g_BG0_MAP_START        = VDP.TILE_VRAM;  // BG0 Starts at base of tile vram
-    // g_BG1_MAP_START        = g_BG0_MAP_START + BG1_OFFSET[BG_CTRL_LAYOUT_GET()];
-    // g_CHAR_VRAM_4BPP_START = (uint8_t *)VDP.TILE_VRAM + CHARBASE_OFFSET[BG_CTRL_LAYOUT_GET()] + (VDP.CHARBASE * BYTES_PER_8BPP_TILE_ROW);
-    set_4bpp_tile_patterns_base_address(CHAR_VRAM_4BPP_START());
+    VDP.BM_SCROLLX[2] = 0u; // Blue
+    VDP.BM_SCROLLY[2] = DEVICE_SCREEN_PX_HEIGHT;
+        // VDP.BM_SCREENX[2]   = 64u;
+        // VDP.BM_SCREENY[2]   = 64u;
+
+    VDP.BM_SCROLLX[3] = DEVICE_SCREEN_PX_WIDTH; // LSBits
+    VDP.BM_SCROLLY[3] = DEVICE_SCREEN_PX_HEIGHT;
+
+    VDP.BM_SUBPAL       = BM_SUBPAL(0,1,2,3);
+    VDP.BM_CTRL         = BM_MODE_4BPP_SHARED;
+    VDP.SCREENPRIO      = BLEND_MATH_ADD | SCREEN_A_ENABLE | SCREEN_B_ENABLE | PRIORITY_BM_B | PRIORITY_BG0_A | PRIORITY_OBJ0_A;
+    // (all bm* on A, no blending)
+    // VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_A, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0 | LAYER_ENABLE_BM1 | LAYER_ENABLE_BM2 | LAYER_ENABLE_BM3;
+// BM0 and 2 only, Blend ON
+VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_B, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0 | LAYER_ENABLE_BM2;
+    // (bm01 on A, bm12 on B, blending)
+    // VDP.LAYER_CTRL      = LAYER_SCREEN(LAYER_SCREEN_A, LAYER_SCREEN_B, LAYER_SCREEN_A, LAYER_SCREEN_A) | LAYER_ENABLE_BM0 | LAYER_ENABLE_BM1 | LAYER_ENABLE_BM2 | LAYER_ENABLE_BM3;
 }
 
 // Test: Draw onto BG1 (and offset loaded palette, tiles and tilemap entries)
-void load_intro_cat(void) {
-    // Offset past title screen tiles
-    const unsigned int tile_num_start_offset = TILE_NUM_0 + title_screen_out_TILE_COUNT;
+void load_rgb555_image(void) {
 
-    bios_vsync();
-    set_bkg_4bpp_palette(PAL_4, intro_cat_out_PALETTE_COUNT, intro_cat_out_palettes);
-    set_bkg_4bpp_data(tile_num_start_offset, intro_cat_out_TILE_COUNT, intro_cat_out_tiles);
-    // Set BG1 tilemap tiles to render on Screen B, then it can blend with BG0 on Screen A
-    // Otherwise it would be totally hidden by BG0 (it's current image has no transparent/backdrop tiles)
-    set_bkg_tilemap_base_address(BG1_MAP_START());
-    set_bkg_tiles_target_screen_a_or_b(LAYER_SCREEN_B);
-    set_bkg_based_tiles((DEVICE_SCREEN_WIDTH - intro_cat_out_TILES_WIDTH)/2,  // Tile centered X
-                  (DEVICE_SCREEN_HEIGHT - intro_cat_out_TILES_HEIGHT)/2,  // Tile centered Y
-                  intro_cat_out_TILES_WIDTH, intro_cat_out_TILES_HEIGHT, intro_cat_out_map, tile_num_start_offset);
-}
+    // Prepare palettes
+    uint16_t * p_pal = &VDP.PALETTE[0];
 
-// Test: Draw onto BG0
-void load_title_screen(void) {
-    bios_vsync();
-    set_bkg_4bpp_palette(PAL_0, title_screen_out_PALETTE_COUNT, title_screen_out_palettes);
-    set_bkg_4bpp_data(TILE_NUM_0, title_screen_out_TILE_COUNT, title_screen_out_tiles);
-    set_bkg_tilemap_base_address(BG0_MAP_START());
-    set_bkg_tiles_target_screen_a_or_b(LAYER_SCREEN_A);
-    set_bkg_tiles((DEVICE_SCREEN_WIDTH - title_screen_out_TILES_WIDTH)/2,  // Tile centered X
-                  (DEVICE_SCREEN_HEIGHT - title_screen_out_TILES_HEIGHT)/2,  // Tile centered Y
-                  title_screen_out_TILES_WIDTH, title_screen_out_TILES_HEIGHT, title_screen_out_map);
+    // Set up RGB channel palettes for BM0/1/2
+    const uint8_t pal444[COLS_PER_PAL_4BPP] = {0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30};
+    const uint16_t palrgb_lsbits[COLS_PER_PAL_4BPP] = {
+        RGB555(0,0,0), RGB555(1,0,0), RGB555(0,1,0),    // 0:Black, 1:Blue LSBit, 2:Green LSBit
+        RGB555(1,1,0), RGB555(0,0,1), RGB555(1,0,1),    // 3:Blue+Green LSBits, 4:Red LSBit, 5:Red + Blue LSBit
+        RGB555(0,1,1), RGB555(1,1,1), 0,0,0,0,0,0,0,0}; // 6:Red+Green LSBits, 7:Red+Green+Blue LSBits, 8..15: Black
+
+
+    for (unsigned int c = 0; c < COLS_PER_PAL_4BPP; c++) {
+        *p_pal                             = RGB555(pal444[c], 0, 0); // Red
+        *(p_pal +  COLS_PER_PAL_4BPP)      = RGB555(0, pal444[c], 0); // Green
+        *(p_pal + (COLS_PER_PAL_4BPP * 2)) = RGB555(0, 0, pal444[c]); // Blue
+        // *(p_pal + (COLS_PER_PAL_4BPP * 3)) = palrgb_lsbits[c]; // RGBLSBits
+        p_pal++;
+    }
+
+    // Load RGB555 image and split into 4 planes: R4(bm0), G4(bm1), B4(bm2), LSBits(bm3)
+    // The /2 is due to 4bpp mode packing 2 pixels into each byte
+    #define BM_TILEMAP_W 512u    
+    #define ROWSTRIDE ((BM_TILEMAP_W / 2) - ((DEVICE_SCREEN_PX_WIDTH / 2)))
+
+    // 512x512 Bitmap layer
+    //
+    //   Red(bm0)  | Green(bm1)
+    //   ----------------------
+    //   Blue(bm2) | LSBits(gm3)
+    // The /2 is due to 4bpp mode packing 2 pixels into each byte
+    #define RED444_OFFSET   (0u)                                    
+    #define GREEN444_OFFSET (DEVICE_SCREEN_PX_WIDTH / 2)
+    #define BLUE444_OFFSET  (DEVICE_SCREEN_PX_HEIGHT * (BM_TILEMAP_W / 2))
+    #define LSBITS_OFFSET   (DEVICE_SCREEN_PX_HEIGHT * (BM_TILEMAP_W / 2) + (DEVICE_SCREEN_PX_WIDTH / 2))
+
+    // const uint16_t * p_img = rgb888_range_test;
+    const uint16_t * p_img = parrots;
+          uint8_t  * p_bm  = VDP.BITMAP_VRAM_8BIT;
+
+    for (uint16_t y = 0; y < DEVICE_SCREEN_PX_HEIGHT; y++) {
+        for (uint16_t x = 0; x < DEVICE_SCREEN_PX_WIDTH; x+=2) {
+
+
+/*
+            Test gradients on BM0/1/2 - works
+            p_bm[RED444_OFFSET]  = (((y/16) & 0x1F) << 4) | ((y /16) & 0x1F);
+            p_bm[GREEN444_OFFSET] = ((15-(x/16 & 0x1F)) << 4) | ((15-((x+1)/16)) & 0x1F);
+            p_bm[BLUE444_OFFSET]   = ((x/16 & 0x1F) << 4) | (((x+1)/16) & 0x1F);
+            // p_bm[LSBITS_OFFSET]   = 0;
+*/
+            // Test image, works with ONLY 2 channels at once
+            // due to all colors in given bm being same channel
+            // and blending only between *screens* and not bm*s
+
+            uint16_t left_pixel555  = *p_img++; // Load image pixel and advance to next
+            uint16_t right_pixel555 = *p_img++; // Load image pixel and advance to next
+
+            // Blue
+            uint8_t lsbits   =  (uint8_t) left_pixel555 & 0x01u << 4; // Save Blue LSBit
+                    lsbits   |= (uint8_t)right_pixel555 & 0x01u;
+            left_pixel555  >>= 1;
+            right_pixel555 >>= 1;
+            p_bm[BLUE444_OFFSET]  = ((uint8_t)left_pixel555 & 0x0Fu) << 4 | ((uint8_t)right_pixel555 & 0x0Fu);
+            left_pixel555  >>= 4;
+            right_pixel555 >>= 4;
+
+            // Green
+            lsbits |= ((uint8_t) left_pixel555 & 0x01u) << (1 + 4); // Save Green LSBit
+            lsbits |= ((uint8_t)right_pixel555 & 0x01u) << 1;
+            left_pixel555  >>= 1;
+            right_pixel555 >>= 1;
+            p_bm[GREEN444_OFFSET]  = ((uint8_t)left_pixel555 & 0x0Fu) << 4 | ((uint8_t)right_pixel555 & 0x0Fu);
+            left_pixel555  >>= 4;
+            right_pixel555 >>= 4;
+
+            // Red
+            lsbits |= ((uint8_t) left_pixel555 & 0x01u) << (2 + 4); // Save Red LSBit
+            lsbits |= ((uint8_t)right_pixel555 & 0x01u) << 2;
+            left_pixel555  >>= 1;
+            right_pixel555 >>= 1;
+            p_bm[RED444_OFFSET]  = ((uint8_t)left_pixel555 & 0x0Fu) << 4 | ((uint8_t)right_pixel555 & 0x0Fu);
+
+            // LSBits
+            p_bm[LSBITS_OFFSET]  = lsbits;
+
+            p_bm++; // Next bitmap pixel pair
+        }
+        p_bm += ROWSTRIDE; // Next bitmap row
+    }
 }
 
 
@@ -124,12 +205,42 @@ int main() {
 
 
     // Test:
-    load_intro_cat();
-    load_title_screen();
+    load_rgb555_image();
 
 	// Every frame, move the BM0 layer according to gamepad/mouse
 	while(1) {
 		bios_vsync();
+
+            // Update button state from gamepad buttons
+            uint32_t buttonsNow = READ_GAMEPAD1;
+            pressedButtons = buttonsNow & ~heldButtons;
+            heldButtons = buttonsNow;
+
+            // Set the motion from D-pad directions
+            if (heldButtons & GAMEPAD_BTN_LEFT) {
+                VDP.BM_SCROLLX[1]--;
+            } else if (heldButtons & GAMEPAD_BTN_RIGHT) {
+                VDP.BM_SCROLLX[1]++;
+            }
+
+            if(heldButtons & GAMEPAD_BTN_UP) {
+                VDP.BM_SCROLLY[1]--;
+            } else if(heldButtons & GAMEPAD_BTN_DOWN) {
+                VDP.BM_SCROLLY[1]++;
+            }        
+
+            // Set the motion from D-pad directions
+            if (heldButtons & GAMEPAD_BTN_RTRIG) {
+                VDP.BM_SCROLLX[2]--;
+            } else if (heldButtons & GAMEPAD_BTN_LTRIG) {
+                VDP.BM_SCROLLX[2]++;
+            }
+
+            if(heldButtons & GAMEPAD_BTN_B) {
+                VDP.BM_SCROLLY[2]--;
+            } else if(heldButtons & GAMEPAD_BTN_A) {
+                VDP.BM_SCROLLY[2]++;
+            }        
 	}
 
 	return 0;
