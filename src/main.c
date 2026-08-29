@@ -92,7 +92,7 @@ void init_gfx() {
 #define PAL_15_BLUE_4BPP  15u
 #define PALBLUE_OFFSET   (15u * COLS_PER_PAL_4BPP)
 
-void load_rgb444_256x224_image(const uint16_t * p_src_img_4bpp) {
+void load_rgb444_256x224_image(const uint8_t * p_src_img_4bpp) {
 
     // Prepare palettes
     uint16_t * p_pal = &VDP.PALETTE[0];
@@ -115,16 +115,23 @@ void load_rgb444_256x224_image(const uint16_t * p_src_img_4bpp) {
     for (uint16_t y = 0; y < DEVICE_SCREEN_PX_HEIGHT; y++) {
         for (uint16_t x = 0; x < DEVICE_SCREEN_PX_WIDTH; x++) {
 
-            uint16_t pixel444  = *p_src_img_4bpp++; // Load image pixel and advance to next
+            // Now using `-loopy_hicol_rgb444` preset with conversion tool png2reducedrgb
+            // which handles all the data formatting ahead of time
+            //
+            // Might optimized further as separate blocks for line based DMA
+            p_bm[BLUE444_OFFSET] = *p_src_img_4bpp++;
+            p_bm[REDGREEN444_OFFSET] = *p_src_img_4bpp++;
 
-            // Blue Channel
-            p_bm[BLUE444_OFFSET]  = PALBLUE_OFFSET + (uint8_t)(pixel444 & 0x0Fu);
-
-            // Red + Green Channels
-            uint16_t green = (pixel444 >> 4) & 0x0Fu;
-            uint16_t red   = (pixel444 >> 8) & 0x0Fu;
-                     if (red > 0) red--;  // Remap red 1-15 -> 0-14 to deal with only 14 palette range for it
-            p_bm[REDGREEN444_OFFSET]  = (red << 4) | green;
+            // Previous manual formatting version
+            //
+            // // Blue Channel
+            // p_bm[BLUE444_OFFSET]  = PALBLUE_OFFSET + (uint8_t)(pixel444 & 0x0Fu);
+            //
+            // // Red + Green Channels
+            // uint16_t green = (pixel444 >> 4) & 0x0Fu;
+            // uint16_t red   = (pixel444 >> 8) & 0x0Fu;
+            //          if (red > 0) red--;  // Remap red 1-15 -> 0-14 to deal with only 14 palette range for it
+            // p_bm[REDGREEN444_OFFSET]  = (red << 4) | green;
 
             p_bm++; // Next bitmap pixel
         }

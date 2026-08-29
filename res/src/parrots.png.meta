@@ -1,1 +1,1 @@
- -v -bit_depth 4,4,4 -output_mode csource 
+ -v -loopy_hicol_rgb444 -output_mode csource 
